@@ -1,0 +1,566 @@
+// EdgeFlow Database Schema
+// Turso/libSQL via Prisma ORM
+// Clean Architecture — this schema maps to the Domain layer entities
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters", "tracing"]
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  UNVERIFIED
+  VERIFIED
+  SUSPENDED
+}
+
+enum AuthProvider {
+  EMAIL
+  GOOGLE
+  GITHUB
+}
+
+enum WorkspaceRole {
+  VIEWER
+  EDITOR
+  ADMIN
+  OWNER
+}
+
+enum InvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  REVOKED
+}
+
+enum ProjectVisibility {
+  PRIVATE
+  WORKSPACE
+  PUBLIC
+}
+
+enum ConnectionProtocol {
+  REST
+  HTTP
+  HTTPS
+  TCP
+  UDP
+  WEBSOCKET
+  KAFKA_TOPIC
+  RABBITMQ_QUEUE
+  REDIS_PUBSUB
+  DATABASE
+  GRAPHQL
+  GRPC
+}
+
+enum ComponentCategory {
+  BACKEND
+  CLOUD
+  NETWORKING
+  DATABASE
+  MESSAGING
+  INFRASTRUCTURE
+  STORAGE
+  APPLICATION
+}
+
+enum CommentAnchorType {
+  NODE
+  CONNECTION
+  CANVAS
+}
+
+enum NotificationType {
+  MENTION
+  INVITATION
+  COMMENT_REPLY
+  PROJECT_SHARED
+  WORKSPACE_ROLE_CHANGED
+  VERSION_RESTORED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  INVITE
+  ACCEPT_INVITE
+  REVOKE_INVITE
+  ROLE_CHANGE
+  PASSWORD_RESET
+  API_KEY_CREATE
+  API_KEY_DELETE
+  EXPORT
+  RESTORE_VERSION
+}
+
+// ─── Users ────────────────────────────────────────────────────────────────────
+
+model User {
+  id          String     @id @default(uuid())
+  email       String     @unique
+  displayName String    
+  avatarUrl   String?   
+  status      UserStatus @default(UNVERIFIED)
+  provider    AuthProvider @default(EMAIL)
+
+  // Hashed password — null for OAuth-only accounts
+  passwordHash String?
+
+  // OAuth identities
+  googleId String? @unique
+  githubId String? @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  sessions            Session[]
+  refreshTokens       RefreshToken[]
+  ownedWorkspaces     Workspace[]        @relation("WorkspaceOwner")
+  workspaceMemberships WorkspaceMember[]
+  projectMemberships  ProjectMember[]
+  invitationsSent     WorkspaceInvitation[] @relation("InvitedBy")
+  createdProjects     Project[]          @relation("ProjectCreator")
+  canvasNodes         CanvasNode[]
+  canvasConnections   CanvasConnection[]
+  events              CanvasEvent[]
+  comments            Comment[]
+  commentReactions    CommentReaction[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  apiKeys             ApiKey[]
+  namedVersions       ProjectVersion[]
+
+  @@index([email])
+  @@index([googleId])
+  @@index([githubId])
+  @@map("users")
+}
+
+model Session {
+  id          String   @id @default(uuid())
+  userId      String  
+  ipAddress   String  
+  userAgent   String  
+  createdAt   DateTime @default(now())
+  lastUsedAt  DateTime @default(now())
+  expiresAt   DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String  
+  sessionId String  
+  tokenHash String  
+  isRevoked Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([isRevoked, expiresAt])
+  @@map("refresh_tokens")
+}
+
+// ─── Workspaces ───────────────────────────────────────────────────────────────
+
+model Workspace {
+  id          String   @id @default(uuid())
+  name        String  
+  slug        String   @unique
+  description String? 
+  logoUrl     String? 
+  ownerId     String  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  owner   User @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+
+  members     WorkspaceMember[]
+  invitations WorkspaceInvitation[]
+  projects    Project[]
+  auditLogs   AuditLog[]
+
+  @@index([ownerId])
+  @@index([slug])
+  @@index([deletedAt])
+  @@map("workspaces")
+}
+
+model WorkspaceMember {
+  workspaceId String       
+  userId      String       
+  role        WorkspaceRole @default(VIEWER)
+  joinedAt    DateTime      @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([workspaceId, userId])
+  @@index([userId])
+  @@map("workspace_members")
+}
+
+model WorkspaceInvitation {
+  id              String           @id @default(uuid())
+  workspaceId     String          
+  invitedByUserId String          
+  email           String          
+  role            WorkspaceRole    @default(VIEWER)
+  status          InvitationStatus @default(PENDING)
+  tokenHash       String          
+  expiresAt       DateTime
+  createdAt       DateTime         @default(now())
+  acceptedAt      DateTime?
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  invitedBy   User      @relation("InvitedBy", fields: [invitedByUserId], references: [id])
+
+  @@index([workspaceId])
+  @@index([email])
+  @@index([tokenHash])
+  @@map("workspace_invitations")
+}
+
+// ─── Projects ─────────────────────────────────────────────────────────────────
+
+model Project {
+  id              String            @id @default(uuid())
+  workspaceId     String           
+  name            String           
+  description     String?          
+  visibility      ProjectVisibility @default(PRIVATE)
+  thumbnailUrl    String?          
+  createdByUserId String           
+  lastAccessedAt  DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy   User      @relation("ProjectCreator", fields: [createdByUserId], references: [id])
+
+  members     ProjectMember[]
+  nodes       CanvasNode[]
+  connections CanvasConnection[]
+  events      CanvasEvent[]
+  snapshots   CanvasSnapshot[]
+  versions    ProjectVersion[]
+  layers      CanvasLayer[]
+  comments    Comment[]
+
+  @@index([workspaceId])
+  @@index([createdByUserId])
+  @@index([deletedAt])
+  @@index([updatedAt(sort: Desc)])
+  @@map("projects")
+}
+
+model ProjectMember {
+  projectId String       
+  userId    String       
+  role      WorkspaceRole @default(EDITOR)
+  createdAt DateTime      @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([projectId, userId])
+  @@index([userId])
+  @@map("project_members")
+}
+
+// ─── Canvas ───────────────────────────────────────────────────────────────────
+
+model CanvasLayer {
+  id        String  @id @default(uuid())
+  projectId String 
+  name      String 
+  isVisible Boolean @default(true)
+  isLocked  Boolean @default(false)
+  order     Int     @default(0)
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  nodes   CanvasNode[]
+
+  @@index([projectId])
+  @@map("canvas_layers")
+}
+
+model CanvasNode {
+  id            String            @id @default(uuid())
+  projectId     String           
+  createdByUserId String         
+  componentType String           
+  category      ComponentCategory
+  positionX     Float
+  positionY     Float
+  width         Float             @default(200)
+  height        Float             @default(100)
+  rotation      Float             @default(0)
+  layerId       String?          
+  groupId       String?          
+  zIndex        Int               @default(0)
+  color         String?          
+
+  // Stored as JSONB for flexible schema evolution
+  metadata      Json              @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User         @relation(fields: [createdByUserId], references: [id])
+  layer       CanvasLayer? @relation(fields: [layerId], references: [id])
+
+  // Self-referential for groups
+  group       CanvasNode?  @relation("NodeGroup", fields: [groupId], references: [id])
+  children    CanvasNode[] @relation("NodeGroup")
+
+  // Connections where this node is the source or target
+  outgoingConnections CanvasConnection[] @relation("ConnectionSource")
+  incomingConnections CanvasConnection[] @relation("ConnectionTarget")
+
+  comments Comment[]
+
+  @@index([projectId])
+  @@index([groupId])
+  @@index([layerId])
+  @@index([projectId, zIndex])
+  @@map("canvas_nodes")
+}
+
+model CanvasConnection {
+  id            String             @id @default(uuid())
+  projectId     String            
+  createdByUserId String          
+  sourceNodeId  String            
+  targetNodeId  String            
+  sourceHandle  String?           
+  targetHandle  String?           
+  protocol      ConnectionProtocol @default(HTTP)
+  label         String?           
+  metadata      Json               @default("{}")
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy   User       @relation(fields: [createdByUserId], references: [id])
+  sourceNode  CanvasNode @relation("ConnectionSource", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode  CanvasNode @relation("ConnectionTarget", fields: [targetNodeId], references: [id], onDelete: Cascade)
+
+  comments Comment[]
+
+  @@index([projectId])
+  @@index([sourceNodeId])
+  @@index([targetNodeId])
+  @@map("canvas_connections")
+}
+
+// ─── Event Sourcing ───────────────────────────────────────────────────────────
+
+model CanvasEvent {
+  id             String @id
+  sequenceNumber BigInt
+  version        Int
+  type           String
+  workspaceId    String
+  projectId      String
+  userId         String
+  timestamp      DateTime @default(now())
+
+  // Full event payload stored as JSONB
+  payload Json @default("{}")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([projectId, sequenceNumber])
+  @@index([projectId, sequenceNumber])
+  @@index([projectId, type])
+  @@index([userId])
+  @@index([timestamp])
+  @@map("canvas_events")
+}
+
+model CanvasSnapshot {
+  id             String   @id @default(uuid())
+  projectId      String  
+  sequenceNumber BigInt
+  integrityHash  String  
+
+  // Full canvas state as JSONB
+  state     Json
+  createdAt DateTime @default(now())
+  createdBySystem Boolean @default(true)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, sequenceNumber(sort: Desc)])
+  @@map("canvas_snapshots")
+}
+
+model ProjectVersion {
+  id             String   @id @default(uuid())
+  projectId      String  
+  name           String  
+  sequenceNumber BigInt
+  createdByUserId String 
+  isAutomatic    Boolean  @default(true)
+  createdAt      DateTime @default(now())
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User    @relation(fields: [createdByUserId], references: [id])
+
+  @@index([projectId, sequenceNumber(sort: Desc)])
+  @@map("project_versions")
+}
+
+// ─── Comments ─────────────────────────────────────────────────────────────────
+
+model Comment {
+  id              String            @id @default(uuid())
+  projectId       String           
+  authorId        String           
+  parentCommentId String?          
+  body            String           
+  anchorType      CommentAnchorType
+  anchorNodeId    String?          
+  anchorConnectionId String?       
+  anchorX         Float?
+  anchorY         Float?
+  isResolved      Boolean           @default(false)
+  resolvedAt      DateTime?
+  resolvedByUserId String?         
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  deletedAt       DateTime?
+
+  project         Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author          User              @relation(fields: [authorId], references: [id])
+  anchorNode      CanvasNode?       @relation(fields: [anchorNodeId], references: [id])
+  anchorConnection CanvasConnection? @relation(fields: [anchorConnectionId], references: [id])
+
+  // Threading
+  parentComment   Comment?  @relation("CommentThread", fields: [parentCommentId], references: [id])
+  replies         Comment[] @relation("CommentThread")
+
+  reactions       CommentReaction[]
+  mentions        CommentMention[]
+
+  @@index([projectId])
+  @@index([authorId])
+  @@index([anchorNodeId])
+  @@index([parentCommentId])
+  @@map("comments")
+}
+
+model CommentReaction {
+  id        String   @id @default(uuid())
+  commentId String  
+  userId    String  
+  emoji     String  
+  createdAt DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId, emoji])
+  @@map("comment_reactions")
+}
+
+model CommentMention {
+  id            String   @id @default(uuid())
+  commentId     String  
+  mentionedUserId String
+  createdAt     DateTime @default(now())
+
+  comment Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@index([commentId])
+  @@index([mentionedUserId])
+  @@map("comment_mentions")
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+model Notification {
+  id         String           @id @default(uuid())
+  userId     String          
+  type       NotificationType
+  title      String          
+  body       String          
+  isRead     Boolean          @default(false)
+  readAt     DateTime?
+  metadata   Json             @default("{}")
+  createdAt  DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("notifications")
+}
+
+// ─── Security ─────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id             String      @id @default(uuid())
+  actorUserId    String     
+  action         AuditAction
+  resourceType   String     
+  resourceId     String     
+  workspaceId    String?    
+  ipAddress      String     
+  userAgent      String?    
+  metadata       Json        @default("{}")
+  createdAt      DateTime    @default(now())
+
+  actor     User       @relation(fields: [actorUserId], references: [id])
+  workspace Workspace? @relation(fields: [workspaceId], references: [id])
+
+  @@index([actorUserId])
+  @@index([workspaceId])
+  @@index([resourceType, resourceId])
+  @@index([createdAt(sort: Desc)])
+  @@map("audit_logs")
+}
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  userId      String   
+  name        String   
+  keyHash     String   
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  createdAt   DateTime  @default(now())
+  revokedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+

@@ -1,0 +1,40 @@
+{
+  "name": "edgeflow",
+  "version": "1.0.0",
+  "private": true,
+  "description": "EdgeFlow — Real-Time Collaborative System Design Platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "type-check": "turbo run type-check",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "db:migrate": "pnpm --filter @edgeflow/api exec prisma migrate dev",
+    "db:generate": "pnpm --filter @edgeflow/api exec prisma generate",
+    "db:seed": "pnpm --filter @edgeflow/api exec prisma db seed",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "prettier": "^3.4.2",
+    "turbo": "^2.3.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "packageManager": "npm@11.6.2",
+  "dependencies": {
+    "@prisma/client": "^7.8.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "jsonwebtoken": "^9.0.3",
+    "prisma": "^7.8.0"
+  }
+}

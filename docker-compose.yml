@@ -1,0 +1,172 @@
+name: edgeflow
+
+services:
+
+  # ─── PostgreSQL ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: edgeflow-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: edgeflow
+      POSTGRES_USER: edgeflow
+      POSTGRES_PASSWORD: edgeflow_secret
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U edgeflow -d edgeflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edgeflow-network
+
+  # ─── Redis ──────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: edgeflow-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - edgeflow-network
+
+  # ─── API Server ─────────────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+      target: development
+    container_name: edgeflow-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://edgeflow:edgeflow_secret@postgres:5432/edgeflow
+      REDIS_URL: redis://redis:6379
+      JWT_ACCESS_SECRET: dev-access-secret-please-change-in-production-min-32-chars
+      JWT_REFRESH_SECRET: dev-refresh-secret-please-change-in-production-min-32-chars
+      SMTP_HOST: maildev
+      SMTP_PORT: 1025
+      APP_URL: http://localhost:3000
+      API_URL: http://localhost:3001
+    ports:
+      - "3001:3001"
+      - "9090:9090"
+    volumes:
+      - ./apps/api:/app/apps/api
+      - /app/apps/api/node_modules
+    networks:
+      - edgeflow-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3001/health/live || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ─── NGINX Reverse Proxy ────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: edgeflow-nginx
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infrastructure/nginx/conf.d:/etc/nginx/conf.d:ro
+    networks:
+      - edgeflow-network
+
+  # ─── MailDev (local email testing) ─────────────────────────────────────────
+  maildev:
+    image: maildev/maildev:latest
+    container_name: edgeflow-maildev
+    restart: unless-stopped
+    ports:
+      - "1080:1080"  # Web UI
+      - "1025:1025"  # SMTP
+    networks:
+      - edgeflow-network
+
+  # ─── Prometheus ─────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.2
+    container_name: edgeflow-prometheus
+    restart: unless-stopped
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    networks:
+      - edgeflow-network
+
+  # ─── Grafana ────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: edgeflow-grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+    ports:
+      - "3100:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: edgeflow_grafana
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: http://localhost:3100
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - edgeflow-network
+
+  # ─── Loki (Log Aggregation) ─────────────────────────────────────────────────
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: edgeflow-loki
+    restart: unless-stopped
+    ports:
+      - "3200:3100"
+    volumes:
+      - ./infrastructure/loki/loki.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - edgeflow-network
+
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+
+networks:
+  edgeflow-network:
+    driver: bridge
