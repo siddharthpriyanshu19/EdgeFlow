@@ -27,6 +27,22 @@ export class EmailService {
     });
   }
 
+  async sendVerificationEmail(
+    to: string,
+    displayName: string,
+    token: string,
+  ): Promise<void> {
+    const verifyUrl = `${config.APP_URL}/?verify=${token}`;
+
+    await this.send({
+      to,
+      subject: 'Verify your EdgeFlow email',
+      html: this.buildVerificationTemplate(displayName, verifyUrl),
+    });
+
+    logger.info({ to }, 'Verification email sent');
+  }
+
   async sendPasswordResetEmail(
     to: string,
     displayName: string,
@@ -67,6 +83,25 @@ export class EmailService {
       subject: options.subject,
       html: options.html,
     });
+  }
+
+  private buildVerificationTemplate(displayName: string, verifyUrl: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head><meta charset="utf-8"><title>Verify Your Email</title></head>
+      <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e2e8f0; margin: 0; padding: 40px 20px;">
+        <div style="max-width: 480px; margin: 0 auto; background: #1a1d2e; border-radius: 12px; padding: 40px; border: 1px solid #2d3748;">
+          <h1 style="color: #6366f1; font-size: 24px; margin: 0 0 8px;">EdgeFlow</h1>
+          <p style="color: #94a3b8; font-size: 13px; margin: 0 0 32px;">Real-Time Collaborative System Design</p>
+          <h2 style="font-size: 20px; margin: 0 0 16px;">Verify your email</h2>
+          <p style="color: #cbd5e1; line-height: 1.6;">Hi ${displayName}, welcome to EdgeFlow! Please confirm your email address to activate your account.</p>
+          <a href="${verifyUrl}" style="display: inline-block; margin: 24px 0; padding: 12px 24px; background: #6366f1; color: white; text-decoration: none; border-radius: 8px; font-weight: 600;">Verify Email</a>
+          <p style="color: #64748b; font-size: 13px;">This link expires in 24 hours. If you didn't create an account, please ignore this email.</p>
+        </div>
+      </body>
+      </html>
+    `;
   }
 
   private buildPasswordResetTemplate(displayName: string, resetUrl: string): string {

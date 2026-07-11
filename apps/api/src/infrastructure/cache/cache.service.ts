@@ -5,7 +5,7 @@
  * All cache reads/writes go through this service — never raw Redis calls from business logic.
  */
 
-import type Redis from 'ioredis';
+import type { Redis } from 'ioredis';
 import { createLogger } from '@edgeflow/logger';
 import { cacheHits, cacheMisses } from '../observability/metrics.js';
 

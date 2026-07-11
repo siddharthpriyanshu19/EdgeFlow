@@ -11,7 +11,7 @@
  * connection cannot issue regular commands.
  */
 
-import Redis, { type RedisOptions } from 'ioredis';
+import { Redis, type RedisOptions } from 'ioredis';
 import { createLogger } from '@edgeflow/logger';
 import { config } from '../config/env.js';
 

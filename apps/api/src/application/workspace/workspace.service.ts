@@ -321,8 +321,8 @@ export class WorkspaceService {
           workspaceId,
           deletedAt: null,
           OR: [
-            { name: { contains: query, mode: 'insensitive' } },
-            { description: { contains: query, mode: 'insensitive' } },
+            { name: { contains: query } },
+            { description: { contains: query } },
           ],
         },
         take: limit,
@@ -337,8 +337,8 @@ export class WorkspaceService {
         where: {
           project: { workspaceId, deletedAt: null },
           OR: [
-            { metadata: { path: ['name'], string_contains: query } },
-            { metadata: { path: ['description'], string_contains: query } },
+            { metadata: { path: '$.name', string_contains: query } },
+            { metadata: { path: '$.description', string_contains: query } },
           ],
         },
         include: { project: true },
@@ -354,7 +354,7 @@ export class WorkspaceService {
         where: {
           project: { workspaceId, deletedAt: null },
           OR: [
-            { label: { contains: query, mode: 'insensitive' } },
+            { label: { contains: query } },
           ],
         },
         include: { project: true },
@@ -369,7 +369,7 @@ export class WorkspaceService {
       const comments = await prisma.comment.findMany({
         where: {
           project: { workspaceId, deletedAt: null },
-          body: { contains: query, mode: 'insensitive' },
+          body: { contains: query },
         },
         include: { author: true },
         take: limit,
@@ -385,8 +385,8 @@ export class WorkspaceService {
           workspaceId,
           user: {
             OR: [
-              { displayName: { contains: query, mode: 'insensitive' } },
-              { email: { contains: query, mode: 'insensitive' } },
+              { displayName: { contains: query } },
+              { email: { contains: query } },
             ],
           },
         },

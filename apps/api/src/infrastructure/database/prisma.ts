@@ -14,9 +14,10 @@ import { config } from '../config/env.js';
 const logger = createLogger({ service: 'prisma' });
 
 function createPrismaClient(): PrismaClient {
+  const authToken = config.TURSO_AUTH_TOKEN;
   const adapter = new PrismaLibSQL({
     url: config.TURSO_DATABASE_URL || config.DATABASE_URL,
-    authToken: config.TURSO_AUTH_TOKEN || undefined,
+    ...(authToken ? { authToken } : {}),
   });
 
   return new PrismaClient({
