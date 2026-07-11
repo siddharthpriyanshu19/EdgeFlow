@@ -87,9 +87,6 @@ jobs:
       - name: Generate Prisma client
         run: npm run db:generate
 
-      - name: Run migrations
-        run: npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
-
       - name: Run tests
         run: npm run test --workspace=apps/api
 
