@@ -7,7 +7,6 @@
 FROM node:20-alpine AS base
 RUN apk add --no-cache libc6-compat
 WORKDIR /app
-RUN npm install -g npm@latest
 
 # ─── Stage 2: Development ─────────────────────────────────────────────────────
 FROM base AS development
@@ -49,7 +48,7 @@ RUN npm run build --workspace=packages/validation
 RUN npm run build --workspace=apps/api
 
 # Generate Prisma client
-RUN npx prisma generate --schema=apps/api/prisma/schema.prisma
+RUN npm run db:generate
 
 # ─── Stage 4: Production ──────────────────────────────────────────────────────
 FROM node:20-alpine AS production
@@ -63,7 +62,6 @@ RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 edgeflow
 
 # Copy built artifacts
-COPY --from=builder --chown=edgeflow:nodejs /app/dist ./dist
 COPY --from=builder --chown=edgeflow:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/dist ./apps/api/dist
 COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/prisma ./apps/api/prisma
