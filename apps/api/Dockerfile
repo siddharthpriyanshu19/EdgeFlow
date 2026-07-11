@@ -31,7 +31,7 @@ CMD ["sh", "-c", "npx prisma migrate deploy && npm run dev"]
 FROM base AS builder
 WORKDIR /app
 
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/logger/package.json ./packages/logger/
 COPY packages/types/package.json ./packages/types/
