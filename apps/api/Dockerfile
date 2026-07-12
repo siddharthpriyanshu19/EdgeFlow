@@ -4,8 +4,7 @@
 # Stage 3: builder (compile TypeScript)
 # Stage 4: production (minimal runtime image)
 
-FROM node:20-alpine AS base
-RUN apk add --no-cache libc6-compat
+FROM node:20-slim AS base
 WORKDIR /app
 
 # ─── Stage 2: Development ─────────────────────────────────────────────────────
@@ -51,15 +50,15 @@ RUN npm run build --workspace=packages/validation
 RUN npm run build --workspace=apps/api
 
 # ─── Stage 4: Production ──────────────────────────────────────────────────────
-FROM node:20-alpine AS production
+FROM node:20-slim AS production
 
-RUN apk add --no-cache dumb-init
+RUN apt-get update && apt-get install -y --no-install-recommends dumb-init && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 WORKDIR /app
 
 # Create non-root user
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 edgeflow
+RUN groupadd --system --gid 1001 nodejs && \
+    useradd --system --uid 1001 --gid nodejs edgeflow
 
 # Copy built artifacts
 COPY --from=builder --chown=edgeflow:nodejs /app/node_modules ./node_modules
@@ -75,7 +74,7 @@ USER edgeflow
 EXPOSE 3001 9090
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:3001/health/live || exit 1
+  CMD node -e "fetch('http://localhost:3001/health/live').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
 
 ENTRYPOINT ["dumb-init", "--"]
 CMD ["sh", "-c", "node apps/api/dist/server.js"]
