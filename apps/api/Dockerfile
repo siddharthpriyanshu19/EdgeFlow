@@ -44,6 +44,9 @@ COPY . .
 # Generate Prisma client
 RUN npm run db:generate
 
+# Remove default/empty Prisma client in workspace node_modules to avoid typescript compilation conflicts
+RUN rm -rf apps/api/node_modules/.prisma
+
 # Build packages in dependency order
 RUN npm run build --workspace=packages/logger
 RUN npm run build --workspace=packages/types
