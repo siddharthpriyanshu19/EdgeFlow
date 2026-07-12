@@ -41,14 +41,14 @@ RUN npm ci
 
 COPY . .
 
+# Generate Prisma client
+RUN npm run db:generate
+
 # Build packages in dependency order
 RUN npm run build --workspace=packages/logger
 RUN npm run build --workspace=packages/types
 RUN npm run build --workspace=packages/validation
 RUN npm run build --workspace=apps/api
-
-# Generate Prisma client
-RUN npm run db:generate
 
 # ─── Stage 4: Production ──────────────────────────────────────────────────────
 FROM node:20-alpine AS production
