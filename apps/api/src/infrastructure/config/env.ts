@@ -96,7 +96,7 @@ function loadConfig(): Env {
 export const config = loadConfig();
 
 export function getCorsOrigins(): string[] {
-  return config.CORS_ORIGINS.split(',').map((o) => o.trim());
+  return config.CORS_ORIGINS.split(',').map((o) => o.trim().replace(/\/$/, ''));
 }
 
 export function isProduction(): boolean {
