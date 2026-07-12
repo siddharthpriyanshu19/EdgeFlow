@@ -44,9 +44,6 @@ COPY . .
 # Generate Prisma client
 RUN npm run db:generate
 
-# Remove default/empty Prisma client in workspace node_modules to avoid typescript compilation conflicts
-RUN rm -rf apps/api/node_modules/.prisma
-
 # Build packages in dependency order
 RUN npm run build --workspace=packages/logger
 RUN npm run build --workspace=packages/types
@@ -67,6 +64,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 # Copy built artifacts
 COPY --from=builder --chown=edgeflow:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=edgeflow:nodejs /app/packages ./packages
+COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/node_modules ./apps/api/node_modules
 COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/dist ./apps/api/dist
 COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/prisma ./apps/api/prisma
