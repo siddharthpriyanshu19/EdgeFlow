@@ -63,6 +63,8 @@ RUN addgroup --system --gid 1001 nodejs && \
 
 # Copy built artifacts
 COPY --from=builder --chown=edgeflow:nodejs /app/node_modules ./node_modules
+COPY --from=builder --chown=edgeflow:nodejs /app/packages ./packages
+COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/dist ./apps/api/dist
 COPY --from=builder --chown=edgeflow:nodejs /app/apps/api/prisma ./apps/api/prisma
 COPY --from=builder --chown=edgeflow:nodejs /app/package.json ./package.json
